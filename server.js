@@ -1,4 +1,4 @@
- require('dotenv').config();
+require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -24,9 +24,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
-// تقديم ملفات الواجهة العامة (الويدجت)
-app.use(express.static(path.join(__dirname, 'public')));
 
 // بيانات الاعتماد
 const ADMIN_CREDENTIALS = {
@@ -69,34 +66,37 @@ function saveMessages(messages) {
 
 // نقطة النهاية للشات بوت
 app.post('/api/chat', async (req, res) => {
-    const userMessage = req.body.message;
-    const apiKey = process.env.GOOGLE_API_KEY;
-
-    if (!apiKey) {
-        return res.status(500).json({ error: 'Google API key not configured.' });
-    }
-
-    const apiURL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
     try {
-        const response = await axios.post(apiURL, {
-            contents: [{
-                parts: [{
-                    text: `You are a helpful assistant for a digital marketing company called Social Nest. Answer concisely and in the same language as the user. User's message: "${userMessage}"`
-                }]
-            }]
-        }, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        const userMessage = req.body.message;
+        // استخدام مفتاح DeepSeek من متغيرات البيئة
+        const apiKey = process.env.DEEPSEEK_API_KEY;
 
-        // Extract the text from the Gemini response
-        const reply = response.data.candidates[0].content.parts[0].text.trim();
-        res.json({ reply: reply });
+        if (!apiKey) {
+            return res.status(500).json({ error: 'DeepSeek API key not configured on the server.' });
+        }
+
+        const response = await axios.post(
+            'https://api.deepseek.com/chat/completions',
+            {
+                model: 'deepseek-chat',
+                messages: [
+                    { role: 'system', content: 'You are a helpful assistant for a digital marketing company called GuardXFly.' },
+                    { role: 'user', content: userMessage }
+                ]
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            }
+        );
+
+        const reply = response.data.choices[0].message.content;
+        res.json({ reply });
     } catch (error) {
-        console.error('Error calling Google Gemini API:', error.response ? error.response.data : error.message);
-        res.status(500).json({ error: 'Failed to fetch AI response from Google.' });
+        console.error('API Error:', error.response ? error.response.data : error.message);
+        res.status(500).json({ error: 'An internal server error occurred while fetching AI response.' });
     }
 });
 
@@ -213,39 +213,6 @@ app.get('/dashboard', (_, res) => {
     res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
-// صفحة تعليمات الدمج مع الموقع الأمامي
-app.get('/integration', (req, res) => {
-    const host = req.headers.host;
-    const protocol = req.headers['x-forwarded-proto'] || 'http';
-    const base = `${protocol}://${host}`;
-    res.send(`
-        <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
-        <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>دمج ويدجت الشات</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 24px; line-height: 1.7; }
-                code, pre { background: #f4f4f4; padding: 4px 6px; border-radius: 4px; direction: ltr; }
-                .box { border: 1px solid #ddd; border-radius: 8px; padding: 16px; background:#fff; }
-                h1 { color: #ff4500; }
-                ol { padding-right: 20px; }
-            </style>
-        </head>
-        <body>
-            <h1>دمج ويدجت الشات في موقعك</h1>
-            <div class="box">
-                <p>انسخ هذا الوسم وضعه قبل علامة &lt;/body&gt; في موقعك:</p>
-                <pre>&lt;script src="${base}/widget.js" data-endpoint="${base}/api/chat" defer&gt;&lt;/script&gt;</pre>
-                <p>بعد الإضافة سيظهر زر دردشة عائم أسفل يمين صفحتك ويمكن للمستخدمين التحدث مباشرة مع الشات بوت عبر الـ API.</p>
-                <p>يمكنك تخصيص النهاية الخلفية بتغيير قيمة <code>data-endpoint</code> إذا كان لديك دومين مختلف للـ API.</p>
-            </div>
-        </body>
-        </html>
-    `);
-});
-
 // نقطة نهاية رئيسية
 app.get('/', (_, res) => {
     res.send(`
@@ -274,15 +241,12 @@ app.get('/', (_, res) => {
     `);
 });
 
-// بدء الخادم (تشغيل محلي) + تصدير التطبيق لـ Vercel
-if (process.env.VERCEL) {
-    // في Vercel نقوم بتصدير التطبيق كـ handler بدون تشغيل خادم مستقل
-    module.exports = app;
-} else {
-    // تشغيل محلي/سيرفر تقليدي
-    app.listen(port, '0.0.0.0', () => {
-        console.log(`Server is running on port ${port}`);
-        console.log(`Dashboard available at: http://localhost:${port}/dashboard`);
-        console.log(`API endpoints available at: http://localhost:${port}/api/`);
-    });
-}
+// بدء الخادم
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is running on port ${port}`);
+    console.log(`Dashboard available at: http://localhost:${port}/dashboard`);
+    console.log(`API endpoints available at: http://localhost:${port}/api/`);
+})
+
+// تصدير التطبيق ليعمل على Vercel
+module.exports = app;
